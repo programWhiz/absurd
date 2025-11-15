@@ -4,3 +4,5 @@
 internal/web/dist/
 ui/.vite
 bin
+.env
+.secrets/
