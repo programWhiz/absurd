@@ -104,6 +104,17 @@ export class CancelledTask extends Error {
 }
 
 /**
+ * Throw this error from a task handler to permanently abort the task
+ * without retrying. The task will be marked as cancelled.
+ */
+export class FatalTaskError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FatalTaskError";
+  }
+}
+
+/**
  * This error is thrown when awaiting an event ran into a timeout.
  */
 export class TimeoutError extends Error {
@@ -816,6 +827,12 @@ export class Absurd {
     } catch (err) {
       if (err instanceof SuspendTask || err instanceof CancelledTask) {
         // Task suspended or cancelled (sleep or await), don't complete or fail
+        return;
+      }
+      if (err instanceof FatalTaskError) {
+        this.log.error("[absurd] task fatally aborted:", err);
+        await ctx.fail(err);
+        await this.cancelTask(task.task_id);
         return;
       }
       await ctx.fail(err);
