@@ -1,10 +1,10 @@
 /**
  * Absurd SDK for TypeScript and JavaScript
  */
-import * as pg from "pg";
-import * as os from "os";
+import * as pg from 'pg';
+import * as os from 'os';
 
-export type Queryable = Pick<pg.Client, "query"> | Pick<pg.PoolClient, "query">;
+export type Queryable = Pick<pg.Client, 'query'> | Pick<pg.PoolClient, 'query'>;
 
 export type JsonValue =
   | string
@@ -16,7 +16,7 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue };
 
 export interface RetryStrategy {
-  kind: "fixed" | "exponential" | "none";
+  kind: 'fixed' | 'exponential' | 'none';
   baseSeconds?: number;
   factor?: number;
   maxSeconds?: number;
@@ -76,10 +76,7 @@ interface SpawnResult {
   attempt: number;
 }
 
-export type TaskHandler<P = any, R = any> = (
-  params: P,
-  ctx: TaskContext,
-) => Promise<R>;
+export type TaskHandler<P = any, R = any> = (params: P, ctx: TaskContext) => Promise<R>;
 
 /**
  * Internal exception that is thrown to suspend a run.  As a user
@@ -87,8 +84,8 @@ export type TaskHandler<P = any, R = any> = (
  */
 export class SuspendTask extends Error {
   constructor() {
-    super("Task suspended");
-    this.name = "SuspendTask";
+    super('Task suspended');
+    this.name = 'SuspendTask';
   }
 }
 
@@ -98,8 +95,8 @@ export class SuspendTask extends Error {
  */
 export class CancelledTask extends Error {
   constructor() {
-    super("Task cancelled");
-    this.name = "CancelledTask";
+    super('Task cancelled');
+    this.name = 'CancelledTask';
   }
 }
 
@@ -110,7 +107,7 @@ export class CancelledTask extends Error {
 export class FatalTaskError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "FatalTaskError";
+    this.name = 'FatalTaskError';
   }
 }
 
@@ -120,7 +117,7 @@ export class FatalTaskError extends Error {
 export class TimeoutError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "TimeoutError";
+    this.name = 'TimeoutError';
   }
 }
 
@@ -184,22 +181,14 @@ export class TaskContext {
     for (const row of result.rows) {
       cache.set(row.checkpoint_name, row.state);
     }
-    return new TaskContext(
-      log,
-      taskID,
-      con,
-      queueName,
-      task,
-      cache,
-      claimTimeout,
-    );
+    return new TaskContext(log, taskID, con, queueName, task, cache, claimTimeout);
   }
 
   private async queryWithCancelCheck(sql: string, params: any[]): Promise<any> {
     try {
       return await this.con.query(sql, params);
     } catch (err: any) {
-      if (err?.code === "AB001") {
+      if (err?.code === 'AB001') {
         throw new CancelledTask();
       }
       throw err;
@@ -230,10 +219,7 @@ export class TaskContext {
    * short period of time.
    */
   async sleepFor(stepName: string, duration: number): Promise<void> {
-    return await this.sleepUntil(
-      stepName,
-      new Date(Date.now() + duration * 1000),
-    );
+    return await this.sleepUntil(stepName, new Date(Date.now() + duration * 1000));
   }
 
   /**
@@ -243,7 +229,7 @@ export class TaskContext {
   async sleepUntil(stepName: string, wakeAt: Date): Promise<void> {
     const checkpointName = this.getCheckpointName(stepName);
     const state = await this.lookupCheckpoint(checkpointName);
-    let actualWakeAt = typeof state === "string" ? new Date(state) : wakeAt;
+    let actualWakeAt = typeof state === 'string' ? new Date(state) : wakeAt;
     if (!state) {
       await this.persistCheckpoint(checkpointName, wakeAt.toISOString());
     }
@@ -261,9 +247,7 @@ export class TaskContext {
     return actualStepName;
   }
 
-  private async lookupCheckpoint(
-    checkpointName: string,
-  ): Promise<JsonValue | undefined> {
+  private async lookupCheckpoint(checkpointName: string): Promise<JsonValue | undefined> {
     const cached = this.checkpointCache.get(checkpointName);
     if (cached !== undefined) {
       return cached;
@@ -282,10 +266,7 @@ export class TaskContext {
     return undefined;
   }
 
-  private async persistCheckpoint(
-    checkpointName: string,
-    value: JsonValue,
-  ): Promise<void> {
+  private async persistCheckpoint(checkpointName: string, value: JsonValue): Promise<void> {
     await this.queryWithCancelCheck(
       `SELECT absurd.set_task_checkpoint_state($1, $2, $3, $4, $5, $6)`,
       [
@@ -333,8 +314,7 @@ export class TaskContext {
     }
     if (
       this.task.wake_event === eventName &&
-      (this.task.event_payload === null ||
-        this.task.event_payload === undefined)
+      (this.task.event_payload === null || this.task.event_payload === undefined)
     ) {
       this.task.wake_event = null;
       this.task.event_payload = null;
@@ -344,18 +324,11 @@ export class TaskContext {
     const result = await this.queryWithCancelCheck(
       `SELECT should_suspend, payload
         FROM absurd.await_event($1, $2, $3, $4, $5, $6)`,
-      [
-        this.queueName,
-        this.task.task_id,
-        this.task.run_id,
-        checkpointName,
-        eventName,
-        timeout,
-      ],
+      [this.queueName, this.task.task_id, this.task.run_id, checkpointName, eventName, timeout],
     );
 
     if (result.rows.length === 0) {
-      throw new Error("Failed to await event");
+      throw new Error('Failed to await event');
     }
 
     const { should_suspend, payload } = result.rows[0];
@@ -387,7 +360,7 @@ export class TaskContext {
    */
   async emitEvent(eventName: string, payload?: JsonValue): Promise<void> {
     if (!eventName) {
-      throw new Error("eventName must be a non-empty string");
+      throw new Error('eventName must be a non-empty string');
     }
     await this.con.query(`SELECT absurd.emit_event($1, $2, $3)`, [
       this.queueName,
@@ -405,7 +378,7 @@ export class TaskContext {
   }
 
   async fail(err: unknown): Promise<void> {
-    this.log.error("[absurd] task execution failed:", err);
+    this.log.error('[absurd] task execution failed:', err);
     await this.con.query(`SELECT absurd.fail_run($1, $2, $3, $4)`, [
       this.queueName,
       this.task.run_id,
@@ -428,24 +401,24 @@ export class Absurd {
   private registry = new Map<string, RegisteredTask>();
   private readonly log: Log;
   private worker: Worker | null = null;
+  private maxNoClaimCount: number = 3;
 
   constructor(options: AbsurdOptions | string | pg.Pool = {}) {
-    if (typeof options === "string" || isQueryable(options)) {
+    if (typeof options === 'string' || isQueryable(options)) {
       options = { db: options };
     }
     let connectionOrUrl = options.db;
     if (!connectionOrUrl) {
-      connectionOrUrl =
-        process.env.ABSURD_DATABASE_URL || "postgresql://localhost/absurd";
+      connectionOrUrl = process.env.ABSURD_DATABASE_URL || 'postgresql://localhost/absurd';
     }
-    if (typeof connectionOrUrl === "string") {
+    if (typeof connectionOrUrl === 'string') {
       this.con = new pg.Pool({ connectionString: connectionOrUrl });
       this.ownedPool = true;
     } else {
       this.con = connectionOrUrl;
       this.ownedPool = false;
     }
-    this.queueName = options?.queueName ?? "default";
+    this.queueName = options?.queueName ?? 'default';
     this.defaultMaxAttempts = options?.defaultMaxAttempts ?? 5;
     this.log = options?.log ?? console;
   }
@@ -485,13 +458,10 @@ export class Absurd {
     handler: TaskHandler<P, R>,
   ): void {
     if (!options?.name) {
-      throw new Error("Task registration requires a name");
+      throw new Error('Task registration requires a name');
     }
-    if (
-      options.defaultMaxAttempts !== undefined &&
-      options.defaultMaxAttempts < 1
-    ) {
-      throw new Error("defaultMaxAttempts must be at least 1");
+    if (options.defaultMaxAttempts !== undefined && options.defaultMaxAttempts < 1) {
+      throw new Error('defaultMaxAttempts must be at least 1');
     }
     if (options.defaultCancellation) {
       normalizeCancellation(options.defaultCancellation);
@@ -559,9 +529,7 @@ export class Absurd {
         ? options.maxAttempts
         : (registration?.defaultMaxAttempts ?? this.defaultMaxAttempts);
     const effectiveCancellation =
-      options.cancellation !== undefined
-        ? options.cancellation
-        : registration?.defaultCancellation;
+      options.cancellation !== undefined ? options.cancellation : registration?.defaultCancellation;
     const normalizedOptions = normalizeSpawnOptions({
       ...options,
       maxAttempts: effectiveMaxAttempts,
@@ -575,16 +543,11 @@ export class Absurd {
     }>(
       `SELECT task_id, run_id, attempt
        FROM absurd.spawn_task($1, $2, $3, $4)`,
-      [
-        queue,
-        taskName,
-        JSON.stringify(params),
-        JSON.stringify(normalizedOptions),
-      ],
+      [queue, taskName, JSON.stringify(params), JSON.stringify(normalizedOptions)],
     );
 
     if (result.rows.length === 0) {
-      throw new Error("Failed to spawn task");
+      throw new Error('Failed to spawn task');
     }
 
     const row = result.rows[0];
@@ -598,13 +561,9 @@ export class Absurd {
   /**
    * Emits an event from outside of a task.
    */
-  async emitEvent(
-    eventName: string,
-    payload?: JsonValue,
-    queueName?: string,
-  ): Promise<void> {
+  async emitEvent(eventName: string, payload?: JsonValue, queueName?: string): Promise<void> {
     if (!eventName) {
-      throw new Error("eventName must be a non-empty string");
+      throw new Error('eventName must be a non-empty string');
     }
     await this.con.query(`SELECT absurd.emit_event($1, $2, $3)`, [
       queueName || this.queueName,
@@ -630,11 +589,7 @@ export class Absurd {
     claimTimeout?: number;
     workerId?: string;
   }): Promise<ClaimedTask[]> {
-    const {
-      batchSize: count = 1,
-      claimTimeout = 120,
-      workerId = "worker",
-    } = options ?? {};
+    const { batchSize: count = 1, claimTimeout = 120, workerId = 'worker' } = options ?? {};
 
     const result = await this.con.query<ClaimedTask>(
       `SELECT run_id, task_id, attempt, task_name, params, retry_strategy, max_attempts,
@@ -651,7 +606,7 @@ export class Absurd {
    * For parallel processing, use startWorker with concurrency option.
    */
   async workBatch(
-    workerId: string = "worker",
+    workerId: string = 'worker',
     claimTimeout: number = 120,
     batchSize: number = 1,
   ): Promise<void> {
@@ -668,12 +623,12 @@ export class Absurd {
    */
   async startWorker(options: WorkerOptions = {}): Promise<Worker> {
     const {
-      workerId = `${os.hostname?.() || "host"}:${process.pid}`,
+      workerId = `${os.hostname?.() || 'host'}:${process.pid}`,
       claimTimeout = 120,
       concurrency = 1,
       batchSize,
       pollInterval = 0.25,
-      onError = (err) => console.error("Worker error:", err),
+      onError = (err) => console.error('Worker error:', err),
       fatalOnLeaseTimeout = true,
     } = options;
     const effectiveBatchSize = batchSize ?? concurrency;
@@ -719,6 +674,9 @@ export class Absurd {
     };
 
     this.worker = worker;
+    const maxNoWorkCount = this.maxNoClaimCount;
+    let retriesNoWork = 0;
+
     workerLoopPromise = (async () => {
       while (running) {
         try {
@@ -742,9 +700,21 @@ export class Absurd {
           });
 
           if (messages.length === 0) {
+            retriesNoWork += 1;
+            if (retriesNoWork >= maxNoWorkCount) {
+              this.log.warn(
+                `[absurd] worker ${workerId} has been idle for ${maxNoWorkCount} consecutive batches without claiming any tasks`,
+              );
+              running = false;
+              continue;
+            }
+
             await waitForAvailability();
             continue;
           }
+
+          // we found some work messages, reset the retry counter
+          retriesNoWork = 0;
 
           for (const task of messages) {
             const promise = this.executeTask(task, claimTimeout, {
@@ -791,7 +761,7 @@ export class Absurd {
       log: this.log,
       taskID: task.task_id,
       con: this.con,
-      queueName: registration?.queue ?? "unknown",
+      queueName: registration?.queue ?? 'unknown',
       task: task,
       claimTimeout,
     });
@@ -800,9 +770,7 @@ export class Absurd {
       if (claimTimeout > 0) {
         const taskLabel = `${task.task_name} (${task.task_id})`;
         warnTimer = setTimeout(() => {
-          this.log.warn(
-            `task ${taskLabel} exceeded claim timeout of ${claimTimeout}s`,
-          );
+          this.log.warn(`task ${taskLabel} exceeded claim timeout of ${claimTimeout}s`);
         }, claimTimeout * 1000);
         if (options?.fatalOnLeaseTimeout) {
           fatalTimer = setTimeout(
@@ -818,9 +786,9 @@ export class Absurd {
       }
 
       if (!registration) {
-        throw new Error("Unknown task");
+        throw new Error('Unknown task');
       } else if (registration.queue !== this.queueName) {
-        throw new Error("Misconfigured task (queue mismatch)");
+        throw new Error('Misconfigured task (queue mismatch)');
       }
       const result = await registration.handler(task.params, ctx);
       await ctx.complete(result);
@@ -830,7 +798,7 @@ export class Absurd {
         return;
       }
       if (err instanceof FatalTaskError) {
-        this.log.error("[absurd] task fatally aborted:", err);
+        this.log.error('[absurd] task fatally aborted:', err);
         await ctx.fail(err);
         await this.cancelTask(task.task_id);
         return;
@@ -849,9 +817,7 @@ export class Absurd {
 
 function isQueryable(value: unknown): value is Queryable {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Queryable).query === "function"
+    typeof value === 'object' && value !== null && typeof (value as Queryable).query === 'function'
   );
 }
 
@@ -900,9 +866,7 @@ function serializeRetryStrategy(strategy: RetryStrategy): JsonObject {
   return serialized;
 }
 
-function normalizeCancellation(
-  policy?: CancellationPolicy,
-): JsonObject | undefined {
+function normalizeCancellation(policy?: CancellationPolicy): JsonObject | undefined {
   if (!policy) {
     return undefined;
   }
